@@ -1,0 +1,22 @@
+[Unit]
+Description=StatHost - Static File Hosting Service
+After=network.target
+
+[Service]
+Type=simple
+User=stathost
+Group=stathost
+WorkingDirectory=/var/lib/stathost
+ExecStart=/usr/local/bin/stathost --config /etc/stathost/stathost.toml
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/stathost/buckets
+
+[Install]
+WantedBy=multi-user.target

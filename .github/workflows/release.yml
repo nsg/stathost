@@ -91,8 +91,17 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Package binary (Unix)
-        if: runner.os != 'Windows'
+      - name: Package binary (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact }} dist/
+          cp -r systemd dist/
+          cd dist
+          tar czf stathost-${{ matrix.target }}.tar.gz ${{ matrix.artifact }} systemd/
+
+      - name: Package binary (macOS)
+        if: runner.os == 'macOS'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/${{ matrix.artifact }} dist/
@@ -107,8 +116,15 @@ jobs:
           Copy-Item target/${{ matrix.target }}/release/${{ matrix.artifact }} dist/
           Compress-Archive -Path dist/${{ matrix.artifact }} -DestinationPath dist/stathost-${{ matrix.target }}.zip
 
-      - name: Upload artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stathost-${{ matrix.target }}
+          path: dist/stathost-${{ matrix.target }}.tar.gz
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: stathost-${{ matrix.target }}
