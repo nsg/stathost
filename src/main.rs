@@ -1,7 +1,26 @@
-use axum::{Router, routing::get};
+use axum::{Router, extract::Request, middleware::Next, response::Response, routing::get};
 use stathost::BucketManager;
 use stathost::config::AppConfig;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Instant};
+
+async fn access_log(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let start = Instant::now();
+
+    let response = next.run(request).await;
+
+    let elapsed = start.elapsed();
+    println!(
+        "{} {} {} {}ms",
+        method,
+        uri,
+        response.status().as_u16(),
+        elapsed.as_millis()
+    );
+
+    response
+}
 
 #[tokio::main]
 async fn main() {
@@ -26,6 +45,7 @@ async fn main() {
     let manager = Arc::new(BucketManager::new(buckets_dir));
 
     let app = Router::new()
+        .route("/", get(stathost::serve_root_index))
         .route("/openapi.json", get(stathost::openapi))
         .route("/{bucket}", get(stathost::serve_bucket_root))
         .route("/{bucket}/", get(stathost::serve_bucket_root))
@@ -36,6 +56,7 @@ async fn main() {
                 .put(stathost::upload_file)
                 .delete(stathost::delete_file),
         )
+        .layer(axum::middleware::from_fn(access_log))
         .with_state(manager);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);

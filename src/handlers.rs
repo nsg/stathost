@@ -62,6 +62,10 @@ pub async fn serve_bucket_root(
     serve_file(State(manager), Path((bucket_name, String::new()))).await
 }
 
+pub async fn serve_root_index(State(manager): State<Arc<BucketManager>>) -> Response {
+    serve_file(State(manager), Path(("index".to_string(), String::new()))).await
+}
+
 pub async fn upload_file(
     State(manager): State<Arc<BucketManager>>,
     Path((bucket_name, file_path)): Path<(String, String)>,

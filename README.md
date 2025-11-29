@@ -84,6 +84,14 @@ token = "your-secret-token"
 
 The `_meta/` prefix is reserved for special endpoints and cannot be used as a file path.
 
+### Root Index
+
+```http
+GET /
+```
+
+If a bucket named `index` exists, serves its `index.html`. Returns 404 otherwise.
+
 ### Serve Files
 
 ```http

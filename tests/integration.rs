@@ -65,6 +65,7 @@ async fn run_server(
     let manager = Arc::new(stathost::BucketManager::new(buckets_dir));
 
     let app = Router::new()
+        .route("/", get(stathost::serve_root_index))
         .route("/openapi.json", get(stathost::openapi))
         .route("/{bucket}", get(stathost::serve_bucket_root))
         .route("/{bucket}/", get(stathost::serve_bucket_root))
@@ -260,6 +261,25 @@ async fn test_full_workflow() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 404);
+
+    // Test: Root without index bucket returns 404
+    let resp = client.get(server.url("/")).send().await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    // Test: Root with index bucket serves index.html
+    server.create_bucket("index", "indextoken").await;
+    let resp = client
+        .put(server.url("/index/index.html"))
+        .header("Authorization", "Bearer indextoken")
+        .body("<h1>Welcome</h1>")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    let resp = client.get(server.url("/")).send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "<h1>Welcome</h1>");
 
     server.cleanup().await;
 }
