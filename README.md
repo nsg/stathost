@@ -15,6 +15,8 @@
 
 - **Static File Serving** — Serve files from bucket directories with proper MIME types
 - **Large File Support** — Streaming uploads and downloads for handling large files
+- **Atomic Uploads** — Uploads are staged to a temp file and renamed into place; readers never see partial files
+- **Range Requests** — Single-range `Range: bytes=...` support for efficient seeking in large files
 - **Simple Auth** — Per-bucket token authentication via `config.toml`
 - **Multiple Buckets** — Host multiple independent buckets at different paths
 
@@ -100,6 +102,8 @@ GET /{bucket}/{path}
 
 Returns the file at the given path. Requests to `/{bucket}/` serve `index.html` if present. The `config.toml` file is protected and cannot be downloaded.
 
+Single byte ranges are supported: `Range: bytes=0-1023`, `bytes=1024-`, or `bytes=-500` return `206 Partial Content` with a `Content-Range` header. Unsatisfiable ranges return `416`; multi-range requests fall back to the full `200` response.
+
 ### Upload/Update File
 
 ```http
@@ -110,7 +114,7 @@ Content-Type: application/octet-stream
 <file body>
 ```
 
-Uploads or updates a file. Creates directories as needed.
+Uploads or updates a file. Creates directories as needed. The upload is written to a temporary `*.stathost-tmp` file and atomically renamed into place once fully received, so an interrupted upload never corrupts or truncates an existing file. Stale temp files are cleaned up on server startup.
 
 ### Delete File
 
@@ -128,7 +132,15 @@ GET /{bucket}/_meta/list
 Authorization: Bearer <token>
 ```
 
-Returns a JSON array of file paths in the bucket.
+Returns a JSON array of file paths in the bucket. Add `?detail=true` to instead receive objects with size and modification time:
+
+```json
+[
+  {"path": "images/photo.jpg", "size": 38925024, "mtime": 1784879516}
+]
+```
+
+`size` is in bytes and `mtime` is Unix seconds (UTC).
 
 ### OpenAPI Spec
 

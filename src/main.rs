@@ -42,6 +42,10 @@ async fn main() {
         });
     }
 
+    if let Err(e) = stathost::cleanup_temp_files(&buckets_dir).await {
+        eprintln!("Failed to clean up stale temp files: {}", e);
+    }
+
     let manager = Arc::new(BucketManager::new(buckets_dir));
 
     let app = Router::new()

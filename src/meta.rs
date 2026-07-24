@@ -1,16 +1,24 @@
 use axum::{
     Json,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::{auth::extract_token, bucket::BucketManager};
 
+#[derive(Deserialize)]
+pub struct ListParams {
+    #[serde(default)]
+    detail: bool,
+}
+
 pub async fn list_files(
     State(manager): State<Arc<BucketManager>>,
     Path(bucket_name): Path<String>,
+    Query(params): Query<ListParams>,
     request: Request,
 ) -> Response {
     let Some(bucket) = manager.get_bucket(&bucket_name) else {
@@ -25,9 +33,16 @@ pub async fn list_files(
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    match bucket.list_files().await {
-        Ok(files) => Json(files).into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    if params.detail {
+        match bucket.list_files_detailed().await {
+            Ok(entries) => Json(entries).into_response(),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    } else {
+        match bucket.list_files().await {
+            Ok(files) => Json(files).into_response(),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
     }
 }
 
@@ -45,11 +60,15 @@ pub async fn openapi() -> Response {
                     "summary": "Serve a file",
                     "parameters": [
                         {"name": "bucket", "in": "path", "required": true, "schema": {"type": "string"}},
-                        {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}}
+                        {"name": "path", "in": "path", "required": true, "schema": {"type": "string"}},
+                        {"name": "Range", "in": "header", "required": false, "schema": {"type": "string"},
+                         "description": "Single byte range (e.g. bytes=0-1023, bytes=1024-, bytes=-500). Multi-range requests are answered with the full body."}
                     ],
                     "responses": {
-                        "200": {"description": "File content"},
-                        "404": {"description": "File or bucket not found"}
+                        "200": {"description": "File content (Accept-Ranges: bytes)"},
+                        "206": {"description": "Partial file content with Content-Range: bytes start-end/total"},
+                        "404": {"description": "File or bucket not found"},
+                        "416": {"description": "Range not satisfiable; Content-Range: bytes */total"}
                     }
                 },
                 "put": {
@@ -88,12 +107,17 @@ pub async fn openapi() -> Response {
                     "summary": "List files in bucket",
                     "security": [{"bearerAuth": []}],
                     "parameters": [
-                        {"name": "bucket", "in": "path", "required": true, "schema": {"type": "string"}}
+                        {"name": "bucket", "in": "path", "required": true, "schema": {"type": "string"}},
+                        {"name": "detail", "in": "query", "required": false, "schema": {"type": "boolean", "default": false},
+                         "description": "When true, returns objects with path, size (bytes) and mtime (Unix seconds) instead of plain path strings."}
                     ],
                     "responses": {
                         "200": {
-                            "description": "List of files",
-                            "content": {"application/json": {"schema": {"type": "array", "items": {"type": "string"}}}}
+                            "description": "List of files (array of strings, or of FileEntry objects when detail=true)",
+                            "content": {"application/json": {"schema": {"oneOf": [
+                                {"type": "array", "items": {"type": "string"}},
+                                {"type": "array", "items": {"$ref": "#/components/schemas/FileEntry"}}
+                            ]}}}
                         },
                         "401": {"description": "Unauthorized"},
                         "403": {"description": "Forbidden"}
@@ -102,6 +126,17 @@ pub async fn openapi() -> Response {
             }
         },
         "components": {
+            "schemas": {
+                "FileEntry": {
+                    "type": "object",
+                    "required": ["path", "size", "mtime"],
+                    "properties": {
+                        "path": {"type": "string"},
+                        "size": {"type": "integer", "format": "int64", "description": "File size in bytes"},
+                        "mtime": {"type": "integer", "format": "int64", "description": "Last modification time, Unix seconds (UTC)"}
+                    }
+                }
+            },
             "securitySchemes": {
                 "bearerAuth": {
                     "type": "http",

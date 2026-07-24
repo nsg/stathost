@@ -2,6 +2,15 @@ use crate::config::BucketConfig;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
+pub const TMP_SUFFIX: &str = ".stathost-tmp";
+
+#[derive(serde::Serialize)]
+pub struct FileEntry {
+    pub path: String,
+    pub size: u64,
+    pub mtime: u64,
+}
+
 pub struct Bucket {
     path: PathBuf,
     config: BucketConfig,
@@ -36,7 +45,31 @@ impl Bucket {
     pub async fn list_files(&self) -> Result<Vec<String>, std::io::Error> {
         let mut files = Vec::new();
         collect_files(&self.path, &self.path, &mut files).await?;
-        Ok(files)
+        Ok(files.into_iter().map(|(relative, _)| relative).collect())
+    }
+
+    pub async fn list_files_detailed(&self) -> Result<Vec<FileEntry>, std::io::Error> {
+        let mut files = Vec::new();
+        collect_files(&self.path, &self.path, &mut files).await?;
+
+        let mut entries = Vec::with_capacity(files.len());
+        for (relative, path) in files {
+            let Ok(metadata) = fs::metadata(&path).await else {
+                continue;
+            };
+            let mtime = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            entries.push(FileEntry {
+                path: relative,
+                size: metadata.len(),
+                mtime,
+            });
+        }
+        Ok(entries)
     }
 }
 
@@ -46,6 +79,7 @@ fn is_protected_path(path: &str) -> bool {
         || path_lower.starts_with("config.toml/")
         || path_lower.starts_with("_meta/")
         || path_lower == "_meta"
+        || path_lower.ends_with(TMP_SUFFIX)
 }
 
 fn is_safe_path(base: &Path, full_path: &Path) -> bool {
@@ -76,7 +110,7 @@ fn is_safe_path(base: &Path, full_path: &Path) -> bool {
 async fn collect_files(
     base: &Path,
     current: &Path,
-    files: &mut Vec<String>,
+    files: &mut Vec<(String, PathBuf)>,
 ) -> Result<(), std::io::Error> {
     let mut entries = fs::read_dir(current).await?;
 
@@ -95,7 +129,26 @@ async fn collect_files(
         if path.is_dir() {
             Box::pin(collect_files(base, &path, files)).await?;
         } else {
-            files.push(relative);
+            files.push((relative, path));
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn cleanup_temp_files(dir: &Path) -> Result<(), std::io::Error> {
+    let mut entries = fs::read_dir(dir).await?;
+
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.is_dir() {
+            Box::pin(cleanup_temp_files(&path)).await?;
+        } else if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(TMP_SUFFIX))
+        {
+            let _ = fs::remove_file(&path).await;
         }
     }
 
