@@ -51,7 +51,7 @@ pub async fn openapi() -> Response {
         "openapi": "3.0.3",
         "info": {
             "title": "StatHost API",
-            "version": "1.0.0",
+            "version": env!("CARGO_PKG_VERSION"),
             "description": "A lightweight static file hosting service"
         },
         "paths": {

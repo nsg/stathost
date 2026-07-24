@@ -107,6 +107,7 @@ async fn test_full_workflow() {
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(json["openapi"], "3.0.3");
+    assert_eq!(json["info"]["version"], env!("CARGO_PKG_VERSION"));
 
     // Test: Upload files
     let resp = client

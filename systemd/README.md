@@ -49,6 +49,23 @@ echo -e '[auth]\ntoken = "your-secret-token"' | sudo tee /var/lib/stathost/bucke
 sudo chown -R stathost:stathost /var/lib/stathost/buckets/my-site
 ```
 
+## Upgrading
+
+There is no self-update mechanism — upgrades are manual. Download the new
+release, replace the binary, and restart the service:
+
+```bash
+tar xzf stathost-x86_64-unknown-linux-gnu.tar.gz
+sudo install -m 755 stathost /usr/local/bin/
+sudo systemctl restart stathost
+```
+
+The running version is reported by the API:
+
+```bash
+curl -s http://localhost:8080/openapi.json | grep -o '"version":"[^"]*"'
+```
+
 ## External storage
 
 If mounting external storage to `/var/lib/stathost/buckets`:
